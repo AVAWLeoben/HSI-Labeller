@@ -1,0 +1,1013 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>NIR HSI Pixel Class Labeler</title>
+<style>
+:root{
+  --bg:#090d13;--panel:#111721;--panel2:#0d131c;--border:#263244;
+  --text:#edf3ff;--muted:#8e9aae;--accent:#5b7cfa;--danger:#ff5c74;
+  --warn:#ffd166;--ok:#66e3a4;
+}
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--text);
+  font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+button,input,select{font:inherit}
+button,select,input[type=text],input[type=number]{
+  border:1px solid var(--border);background:#121a26;color:var(--text);border-radius:9px;padding:8px 10px;
+}
+button{cursor:pointer;font-weight:700}
+button:hover{border-color:#526b94;background:#172131}
+button.primary{background:var(--accent);border-color:var(--accent);color:white}
+button.danger{color:#ff9cac}
+button:disabled{opacity:.45;cursor:default}
+.app{height:100%;display:grid;grid-template-columns:310px minmax(0,1fr);gap:8px;padding:8px}
+.sidebar{background:var(--panel);border:1px solid var(--border);border-radius:14px;overflow:auto;padding:12px}
+.sidebar h1{font-size:19px;margin:2px 0 3px}
+.build{font-size:11px;color:var(--muted);margin-bottom:12px}
+.section{border-top:1px solid var(--border);padding-top:10px;margin-top:10px}
+.section-title{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#9daac0;font-weight:800;margin-bottom:7px}
+.stack{display:grid;gap:6px}
+.row{display:flex;gap:6px}
+.row>*{min-width:0;flex:1}
+.small{font-size:12px;color:var(--muted);line-height:1.4;word-break:break-word}
+.meta{padding:8px;background:var(--panel2);border:1px solid var(--border);border-radius:9px}
+.class-list{display:grid;gap:5px;max-height:150px;overflow:auto}
+.class-item{display:grid;grid-template-columns:18px 1fr auto;align-items:center;gap:7px;padding:7px 8px;border:1px solid var(--border);border-radius:8px;background:#0c121b;cursor:pointer}
+.class-item.active{border-color:var(--accent);background:#17233b}
+.swatch{width:13px;height:13px;border-radius:50%;border:1px solid rgba(255,255,255,.45)}
+.main{min-width:0;min-height:0;display:grid;grid-template-rows:minmax(310px,1.6fr) minmax(185px,.72fr) minmax(185px,.72fr);gap:8px}
+.panel{min-height:0;background:var(--panel);border:1px solid var(--border);border-radius:14px;display:flex;flex-direction:column;overflow:hidden}
+.panel-head{height:38px;flex:0 0 38px;display:flex;align-items:center;gap:10px;padding:0 11px;border-bottom:1px solid var(--border);font-size:12px;color:var(--muted)}
+.panel-head strong{color:var(--text)}
+.canvas-wrap{position:relative;flex:1;min-height:0;background:#070a0f;overflow:hidden}
+canvas{display:block;width:100%;height:100%}
+#imageCanvas{cursor:crosshair}
+.legend-note{margin-left:auto}
+.status{font-size:12px;color:var(--muted);min-height:18px;margin-top:6px}
+.progressbar{height:6px;border-radius:999px;background:#202a38;overflow:hidden;margin-top:7px;display:none}
+.progressbar.show{display:block}
+.progressbar>div{height:100%;width:0;background:var(--accent)}
+.overlay{position:fixed;inset:0;background:rgba(4,7,11,.72);display:none;place-items:center;z-index:50}
+.overlay.show{display:grid}
+.loading-card{width:min(460px,calc(100% - 30px));background:#111721;border:1px solid #2b3748;border-radius:16px;padding:20px;box-shadow:0 24px 80px rgba(0,0,0,.45)}
+.loading-card strong{font-size:17px}
+.loading-card p{color:var(--muted);margin:8px 0 0;font-size:13px}
+.pill{display:inline-flex;align-items:center;border:1px solid var(--border);border-radius:999px;padding:3px 7px;font-size:11px;color:var(--muted)}
+.hint{font-size:11px;color:#6f7d91;line-height:1.35}
+input[type=color]{width:44px;height:35px;padding:2px;border:1px solid var(--border);border-radius:8px;background:#121a26}
+input[type=checkbox]{accent-color:var(--accent)}
+label.check{font-size:12px;color:#c3cede;display:flex;align-items:center;gap:7px}
+@media(max-width:950px){
+  html,body{overflow:auto;height:auto}
+  .app{height:auto;grid-template-columns:1fr}
+  .main{height:1100px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <h1>NIR HSI Pixel Class Labeler</h1>
+    <div class="build">Browser Build 2026-10-09b · local processing</div>
+
+    <div class="stack">
+      <button id="loadBtn" class="primary">Load HSI files</button>
+      <div class="row">
+        <button id="prevBtn">← Previous cube</button>
+        <button id="nextBtn">Next cube →</button>
+      </div>
+      <button id="removeBtn" class="danger">Remove current HSI image</button>
+    </div>
+    <input id="fileInput" type="file" accept=".npy,.npz,.mat" multiple hidden>
+
+    <div class="section stack">
+      <div class="section-title">Current cube</div>
+      <div id="fileMeta" class="meta small">No file loaded</div>
+      <div class="row">
+        <button id="rotLeftBtn">↺ 90°</button>
+        <button id="rotRightBtn">90° ↻</button>
+      </div>
+      <div class="row">
+        <button id="resetRotBtn">Reset rotation</button>
+        <button id="fitBtn">Fit full image</button>
+      </div>
+      <div class="hint">Mouse wheel: zoom · right/middle-drag: pan</div>
+    </div>
+
+    <div class="section stack">
+      <div class="section-title">Classes</div>
+      <div class="row">
+        <input id="classInput" type="text" placeholder="Class name, e.g. PE, PP, PET">
+        <button id="addClassBtn">Add</button>
+      </div>
+      <div id="classList" class="class-list"></div>
+      <div class="row">
+        <input id="classColor" type="color" value="#1f77b4" title="Selected class colour">
+        <button id="deleteClassBtn" class="danger">Delete selected class</button>
+      </div>
+    </div>
+
+    <div class="section stack">
+      <div class="section-title">Selection</div>
+      <select id="modeSelect">
+        <option value="pixel">pixel</option>
+        <option value="rectangle">rectangle</option>
+        <option value="ellipse">ellipse</option>
+      </select>
+      <select id="actionSelect">
+        <option value="add">add spectra</option>
+        <option value="remove">remove spectra</option>
+      </select>
+      <div id="countLabel" class="small">No class selected</div>
+      <div id="hoverLabel" class="small">Hover: -</div>
+    </div>
+
+    <div class="section stack">
+      <div class="section-title">Spectrum preprocessing</div>
+      <label class="check"><input id="smoothCheck" type="checkbox"> Savitzky-Golay smoothing</label>
+      <label class="check"><input id="derivCheck" type="checkbox"> Savitzky-Golay 1st derivative</label>
+      <label class="check"><input id="zscoreCheck" type="checkbox"> Z-score normalisation</label>
+      <div class="row">
+        <label class="small">Window
+          <input id="windowInput" type="number" min="3" max="99" step="2" value="11" style="width:100%">
+        </label>
+        <label class="small">Polynomial
+          <input id="polyInput" type="number" min="1" max="5" step="1" value="2" style="width:100%">
+        </label>
+      </div>
+    </div>
+
+    <div class="section stack">
+      <div class="section-title">Export</div>
+      <select id="exportKind">
+        <option value="raw">raw spectra</option>
+        <option value="preprocessed">preprocessed spectra</option>
+      </select>
+      <button id="exportBtn" class="primary">Export selected spectra to XLSX</button>
+      <button id="projectViewBtn">Update PROJECT SPECTRAL VIEW</button>
+      <div id="status" class="status"></div>
+      <div id="progress" class="progressbar"><div id="progressFill"></div></div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <section class="panel">
+      <div class="panel-head"><strong>HSI IMAGE</strong><span id="imageTitle">No cube loaded</span><span class="legend-note pill">selections use original cube coordinates</span></div>
+      <div class="canvas-wrap"><canvas id="imageCanvas"></canvas></div>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><strong>SELECTED CLASS SPECTRA</strong><span>mean ± std + current hover spectrum</span></div>
+      <div class="canvas-wrap"><canvas id="spectrumCanvas"></canvas></div>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><strong>PROJECT SPECTRAL VIEW</strong><span>all selected spectra across loaded cubes</span></div>
+      <div class="canvas-wrap"><canvas id="projectCanvas"></canvas></div>
+    </section>
+  </main>
+</div>
+
+<div id="loading" class="overlay">
+  <div class="loading-card">
+    <strong id="loadingTitle">Loading…</strong>
+    <p id="loadingText"></p>
+    <div class="progressbar show"><div id="loadingFill"></div></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const BUILD="2026-10-09b";
+const MAX_DISPLAY_PIXELS=1500000;
+const COLORS=["#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd","#8c564b","#e377c2","#7f7f7f","#bcbd22","#17becf"];
+const $=id=>document.getElementById(id);
+const els={
+  loadBtn:$("loadBtn"),fileInput:$("fileInput"),prevBtn:$("prevBtn"),nextBtn:$("nextBtn"),removeBtn:$("removeBtn"),
+  fileMeta:$("fileMeta"),rotLeftBtn:$("rotLeftBtn"),rotRightBtn:$("rotRightBtn"),resetRotBtn:$("resetRotBtn"),fitBtn:$("fitBtn"),
+  classInput:$("classInput"),addClassBtn:$("addClassBtn"),classList:$("classList"),classColor:$("classColor"),deleteClassBtn:$("deleteClassBtn"),
+  modeSelect:$("modeSelect"),actionSelect:$("actionSelect"),countLabel:$("countLabel"),hoverLabel:$("hoverLabel"),
+  smoothCheck:$("smoothCheck"),derivCheck:$("derivCheck"),zscoreCheck:$("zscoreCheck"),windowInput:$("windowInput"),polyInput:$("polyInput"),
+  exportKind:$("exportKind"),exportBtn:$("exportBtn"),projectViewBtn:$("projectViewBtn"),status:$("status"),progress:$("progress"),progressFill:$("progressFill"),
+  imageCanvas:$("imageCanvas"),spectrumCanvas:$("spectrumCanvas"),projectCanvas:$("projectCanvas"),imageTitle:$("imageTitle"),
+  loading:$("loading"),loadingTitle:$("loadingTitle"),loadingText:$("loadingText"),loadingFill:$("loadingFill")
+};
+const state={
+  files:[], index:0, classes:[], currentClass:null, mode:"pixel", action:"add",
+  drag:null, pan:null, hoverSpectrum:null, currentSpectrumSeries:[], projectSeries:[],
+  view:{scale:1,offsetX:0,offsetY:0}, renderToken:0
+};
+const nextFrame=()=>new Promise(r=>requestAnimationFrame(()=>r()));
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+function setStatus(text){els.status.textContent=text||""}
+function showProgress(done,total){els.progress.classList.add("show");els.progressFill.style.width=`${total?100*done/total:0}%`}
+function hideProgress(){els.progress.classList.remove("show");els.progressFill.style.width="0"}
+function showLoading(title,text="",pct=0){els.loadingTitle.textContent=title;els.loadingText.textContent=text;els.loadingFill.style.width=`${clamp(pct,0,100)}%`;els.loading.classList.add("show")}
+function updateLoading(text,pct){els.loadingText.textContent=text;els.loadingFill.style.width=`${clamp(pct,0,100)}%`}
+function hideLoading(){els.loading.classList.remove("show");els.loadingFill.style.width="0"}
+function defaultColor(i){return COLORS[i%COLORS.length]}
+function currentFile(){return state.files.length?state.files[state.index]:null}
+function currentClassObj(){return state.classes.find(c=>c.name===state.currentClass)||null}
+
+function nativeLittleEndian(){const b=new ArrayBuffer(2);new Uint16Array(b)[0]=0x00ff;return new Uint8Array(b)[0]===0xff}
+const NATIVE_LITTLE=nativeLittleEndian();
+
+function dtypeInfoFromDescr(descr){
+  let endian="="; let s=descr.trim();
+  if("<>|=".includes(s[0])){endian=s[0];s=s.slice(1)}
+  const kind=s[0], bytes=parseInt(s.slice(1),10);
+  if(!Number.isFinite(bytes))throw new Error(`Unsupported NumPy dtype: ${descr}`);
+  let little=endian===">"?false:endian==="<"?true:NATIVE_LITTLE;
+  if(endian==="|")little=NATIVE_LITTLE;
+  return {kind,bytes,little,descr};
+}
+function dtypeInfoFromMatType(type,little=true){
+  const map={1:["i",1],2:["u",1],3:["i",2],4:["u",2],5:["i",4],6:["u",4],7:["f",4],9:["f",8],12:["i",8],13:["u",8]};
+  if(!map[type])throw new Error(`Unsupported MATLAB numeric data type ${type}.`);
+  return {kind:map[type][0],bytes:map[type][1],little,descr:`mat:${type}`};
+}
+function makeNumericAccessor(buffer,offset,count,info){
+  const {kind,bytes,little}=info;
+  if(offset+count*bytes>buffer.byteLength)throw new Error("Numeric array exceeds file size.");
+  const aligned=(offset%bytes)===0;
+  const native=(bytes===1)||little===NATIVE_LITTLE;
+  if(native&&aligned){
+    let arr=null;
+    if(kind==="f"&&bytes===4)arr=new Float32Array(buffer,offset,count);
+    else if(kind==="f"&&bytes===8)arr=new Float64Array(buffer,offset,count);
+    else if(kind==="i"&&bytes===1)arr=new Int8Array(buffer,offset,count);
+    else if(kind==="u"&&bytes===1)arr=new Uint8Array(buffer,offset,count);
+    else if(kind==="i"&&bytes===2)arr=new Int16Array(buffer,offset,count);
+    else if(kind==="u"&&bytes===2)arr=new Uint16Array(buffer,offset,count);
+    else if(kind==="i"&&bytes===4)arr=new Int32Array(buffer,offset,count);
+    else if(kind==="u"&&bytes===4)arr=new Uint32Array(buffer,offset,count);
+    else if(kind==="i"&&bytes===8&&typeof BigInt64Array!=="undefined")arr=new BigInt64Array(buffer,offset,count);
+    else if(kind==="u"&&bytes===8&&typeof BigUint64Array!=="undefined")arr=new BigUint64Array(buffer,offset,count);
+    if(arr)return {count,get:i=>typeof arr[i]==="bigint"?Number(arr[i]):Number(arr[i]),typed:arr};
+  }
+  const dv=new DataView(buffer,offset,count*bytes);
+  const get=i=>{
+    const p=i*bytes;
+    if(kind==="f"&&bytes===4)return dv.getFloat32(p,little);
+    if(kind==="f"&&bytes===8)return dv.getFloat64(p,little);
+    if(kind==="i"&&bytes===1)return dv.getInt8(p);
+    if(kind==="u"&&bytes===1)return dv.getUint8(p);
+    if(kind==="i"&&bytes===2)return dv.getInt16(p,little);
+    if(kind==="u"&&bytes===2)return dv.getUint16(p,little);
+    if(kind==="i"&&bytes===4)return dv.getInt32(p,little);
+    if(kind==="u"&&bytes===4)return dv.getUint32(p,little);
+    if(kind==="i"&&bytes===8)return Number(dv.getBigInt64(p,little));
+    if(kind==="u"&&bytes===8)return Number(dv.getBigUint64(p,little));
+    throw new Error(`Unsupported numeric dtype ${info.descr}`);
+  };
+  return {count,get,typed:null};
+}
+class Cube{
+  constructor(name,shape,accessor,fortranOrder=false,sourceType=""){
+    if(shape.length!==3)throw new Error(`Expected 3D cube, got shape (${shape.join(", ")}).`);
+    this.name=name;this.shape=shape.map(Number);this.accessor=accessor;this.fortranOrder=!!fortranOrder;this.sourceType=sourceType;
+    this.specAxis=this.shape.findIndex(s=>s===212||s===220||s===288);
+    if(this.specAxis<0)this.specAxis=1;
+    this.spatialAxes=[0,1,2].filter(i=>i!==this.specAxis);
+    this.height=this.shape[this.spatialAxes[0]];
+    this.width=this.shape[this.spatialAxes[1]];
+    this.bands=this.shape[this.specAxis];
+  }
+  flatIndex(y,x,b){
+    const c=[0,0,0];c[this.spatialAxes[0]]=y;c[this.spatialAxes[1]]=x;c[this.specAxis]=b;
+    const [d0,d1,d2]=this.shape;
+    return this.fortranOrder ? c[0]+d0*(c[1]+d1*c[2]) : (c[0]*d1+c[1])*d2+c[2];
+  }
+  value(y,x,b){return this.accessor.get(this.flatIndex(y,x,b))}
+  spectrum(y,x){
+    const out=new Float32Array(this.bands);
+    for(let b=0;b<this.bands;b++)out[b]=this.value(y,x,b);
+    return out;
+  }
+}
+
+function parseNpyHeader(text){
+  const d=text.match(/['"]descr['"]\s*:\s*['"]([^'"]+)['"]/);
+  const f=text.match(/['"]fortran_order['"]\s*:\s*(True|False)/);
+  const s=text.match(/['"]shape['"]\s*:\s*\(([^)]*)\)/);
+  if(!d||!f||!s)throw new Error("Could not parse NumPy .npy header.");
+  const shape=s[1].split(",").map(v=>v.trim()).filter(Boolean).map(Number);
+  return {descr:d[1],fortran:f[1]==="True",shape};
+}
+function parseNPYBuffer(buffer,name="array.npy"){
+  const u8=new Uint8Array(buffer);
+  if(u8.length<12||u8[0]!==0x93||String.fromCharCode(...u8.slice(1,6))!=="NUMPY")throw new Error("Invalid .npy file.");
+  const major=u8[6], dv=new DataView(buffer);
+  let headerLen, headerStart;
+  if(major===1){headerLen=dv.getUint16(8,true);headerStart=10}
+  else {headerLen=dv.getUint32(8,true);headerStart=12}
+  const header=new TextDecoder("latin1").decode(u8.slice(headerStart,headerStart+headerLen));
+  const meta=parseNpyHeader(header);
+  const count=meta.shape.reduce((a,b)=>a*b,1);
+  const info=dtypeInfoFromDescr(meta.descr);
+  const accessor=makeNumericAccessor(buffer,headerStart+headerLen,count,info);
+  return new Cube(name,meta.shape,accessor,meta.fortran,"npy");
+}
+async function inflateBytes(bytes,format){
+  if(typeof DecompressionStream==="undefined")throw new Error("This browser does not support compressed .npz/.mat decompression.");
+  const ds=new DecompressionStream(format);
+  const stream=new Blob([bytes]).stream().pipeThrough(ds);
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+function findZipEntries(buffer){
+  const dv=new DataView(buffer), u8=new Uint8Array(buffer);
+  let eocd=-1;
+  for(let i=u8.length-22;i>=Math.max(0,u8.length-65557);i--){if(dv.getUint32(i,true)===0x06054b50){eocd=i;break}}
+  if(eocd<0)throw new Error("Invalid ZIP/NPZ file.");
+  const total=dv.getUint16(eocd+10,true), cdOffset=dv.getUint32(eocd+16,true);
+  const entries=[];let p=cdOffset;
+  for(let i=0;i<total;i++){
+    if(dv.getUint32(p,true)!==0x02014b50)throw new Error("Invalid ZIP central directory.");
+    const method=dv.getUint16(p+10,true), compSize=dv.getUint32(p+20,true), size=dv.getUint32(p+24,true);
+    const nlen=dv.getUint16(p+28,true), elen=dv.getUint16(p+30,true), clen=dv.getUint16(p+32,true), local=dv.getUint32(p+42,true);
+    const name=new TextDecoder().decode(u8.slice(p+46,p+46+nlen));
+    entries.push({name,method,compSize,size,local});
+    p+=46+nlen+elen+clen;
+  }
+  return entries;
+}
+async function extractZipEntry(buffer,entry){
+  const dv=new DataView(buffer),u8=new Uint8Array(buffer),p=entry.local;
+  if(dv.getUint32(p,true)!==0x04034b50)throw new Error("Invalid ZIP local header.");
+  const nlen=dv.getUint16(p+26,true),elen=dv.getUint16(p+28,true),start=p+30+nlen+elen;
+  const data=u8.slice(start,start+entry.compSize);
+  if(entry.method===0)return data;
+  if(entry.method===8)return await inflateBytes(data,"deflate-raw");
+  throw new Error(`Unsupported ZIP compression method ${entry.method}.`);
+}
+async function parseNPZBuffer(buffer,name){
+  const entries=findZipEntries(buffer).filter(e=>e.name.toLowerCase().endsWith(".npy"));
+  if(!entries.length)throw new Error("No .npy array found inside .npz file.");
+  const bytes=await extractZipEntry(buffer,entries[0]);
+  const b=bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength);
+  const cube=parseNPYBuffer(b,`${name}:${entries[0].name}`);cube.sourceType="npz";return cube;
+}
+
+function matEndian(buffer){
+  const u8=new Uint8Array(buffer);
+  const marker=String.fromCharCode(u8[126],u8[127]);
+  if(marker==="IM")return true;
+  if(marker==="MI")return false;
+  throw new Error("Invalid MATLAB v5 header.");
+}
+function align8(n){return (n+7)&~7}
+function matReadTag(buffer,offset,little){
+  const dv=new DataView(buffer);
+  if(offset+8>buffer.byteLength)return null;
+  if(little){
+    const type16=dv.getUint16(offset,true), n16=dv.getUint16(offset+2,true);
+    if(n16>0&&n16<=4&&type16>0&&type16<=18)return {type:type16,nbytes:n16,dataStart:offset+4,next:offset+8,small:true};
+    const type=dv.getUint32(offset,true),nbytes=dv.getUint32(offset+4,true);
+    return {type,nbytes,dataStart:offset+8,next:align8(offset+8+nbytes),small:false};
+  }else{
+    const first=dv.getUint32(offset,false);
+    if(first<=18){
+      const nbytes=dv.getUint32(offset+4,false);
+      return {type:first,nbytes,dataStart:offset+8,next:align8(offset+8+nbytes),small:false};
+    }
+    const type=dv.getUint16(offset,false),nbytes=dv.getUint16(offset+2,false);
+    return {type,nbytes,dataStart:offset+4,next:offset+8,small:true};
+  }
+}
+function readMatInt32Array(buffer,start,nbytes,little){
+  const dv=new DataView(buffer,start,nbytes),out=[];
+  for(let p=0;p+4<=nbytes;p+=4)out.push(dv.getInt32(p,little));
+  return out;
+}
+async function parseMatElements(buffer,start,little,candidates,namePrefix){
+  let p=start;
+  while(p+8<=buffer.byteLength){
+    const tag=matReadTag(buffer,p,little);if(!tag||tag.type===0||tag.nbytes<0)break;
+    if(tag.dataStart+tag.nbytes>buffer.byteLength)break;
+    if(tag.type===15){
+      const comp=new Uint8Array(buffer,tag.dataStart,tag.nbytes);
+      const dec=await inflateBytes(comp,"deflate");
+      const sub=dec.buffer.slice(dec.byteOffset,dec.byteOffset+dec.byteLength);
+      await parseMatElements(sub,0,little,candidates,namePrefix);
+    }else if(tag.type===14){
+      let q=tag.dataStart, end=tag.dataStart+tag.nbytes, dims=null, arrayName="", realTag=null, subIndex=0;
+      while(q+8<=end){
+        const st=matReadTag(buffer,q,little);if(!st||st.dataStart+st.nbytes>end)break;
+        if(subIndex===1)dims=readMatInt32Array(buffer,st.dataStart,st.nbytes,little).filter(v=>v>0);
+        else if(subIndex===2)arrayName=new TextDecoder().decode(new Uint8Array(buffer,st.dataStart,st.nbytes)).replace(/\0/g,"");
+        else if(subIndex>=3&&[1,2,3,4,5,6,7,9,12,13].includes(st.type)&&!realTag)realTag=st;
+        subIndex++; q=st.next;
+      }
+      if(dims&&dims.length===3&&realTag){
+        const count=dims.reduce((a,b)=>a*b,1), info=dtypeInfoFromMatType(realTag.type,little);
+        if(realTag.nbytes>=count*info.bytes){
+          const accessor=makeNumericAccessor(buffer,realTag.dataStart,count,info);
+          candidates.push({name:arrayName||`${namePrefix}_array`,shape:dims,accessor,count});
+        }
+      }
+    }
+    if(tag.next<=p)break;p=tag.next;
+  }
+}
+async function parseMATBuffer(buffer,name){
+  if(buffer.byteLength<128)throw new Error("MATLAB file is too small.");
+  const little=matEndian(buffer), candidates=[];
+  await parseMatElements(buffer,128,little,candidates,name.replace(/\.mat$/i,""));
+  if(!candidates.length)throw new Error("No 3D numeric array found in classic MATLAB .mat file.");
+  const c=candidates.reduce((a,b)=>b.count>a.count?b:a);
+  return new Cube(`${name}:${c.name}`,c.shape,c.accessor,true,"mat");
+}
+
+// MATLAB v7.3 files are HDF5 containers.  The Python source uses h5py and then
+// reverses the HDF5 axes to recover MATLAB's original axis order.  h5wasm gives
+// us the same HDF5 dataset shape and flat C-order values, so passing the reversed
+// shape to Cube with fortranOrder=true reproduces that transpose without making
+// another full copy of the cube.
+const H5WASM_URL="https://cdn.jsdelivr.net/npm/h5wasm@0.10.3/dist/esm/hdf5_hl.js";
+let h5wasmRuntimePromise=null;
+let h5MountSerial=0;
+async function getH5wasmRuntime(){
+  if(!h5wasmRuntimePromise){
+    h5wasmRuntimePromise=(async()=>{
+      let imported;
+      try{imported=await import(H5WASM_URL)}catch(err){
+        throw new Error(`Could not load the pinned HDF5 WebAssembly runtime (h5wasm 0.10.3). Check the internet connection or host h5wasm locally. ${err?.message||err}`);
+      }
+      const h5wasm=imported.default||imported;
+      const Module=await h5wasm.ready;
+      return {h5wasm,Module,FS:Module.FS};
+    })();
+  }
+  return h5wasmRuntimePromise;
+}
+function hasHdf5SignatureAt(bytes,offset){
+  return bytes.length>=offset+8&&bytes[offset]===0x89&&bytes[offset+1]===0x48&&bytes[offset+2]===0x44&&bytes[offset+3]===0x46&&bytes[offset+4]===0x0d&&bytes[offset+5]===0x0a&&bytes[offset+6]===0x1a&&bytes[offset+7]===0x0a;
+}
+function looksLikeMat73Hdf5(bytes){
+  // MATLAB v7.3 normally uses a 512-byte userblock: the MATLAB header is at
+  // byte 0 and the HDF5 superblock begins at byte 512.  Also accept ordinary
+  // HDF5 files whose signature starts at byte 0 (or another legal power-of-two
+  // userblock boundary) so NEO/HDF5 variants are handled as well.
+  const prefix=new TextDecoder("latin1").decode(bytes.slice(0,Math.min(bytes.length,128)));
+  if(prefix.includes("MATLAB 7.3 MAT-file"))return true;
+  for(const offset of [0,512,1024,2048,4096])if(hasHdf5SignatureAt(bytes,offset))return true;
+  return false;
+}
+function h5DatasetCandidates(root){
+  const out=[];
+  function walk(group,path=""){
+    let keys=[];
+    try{keys=group.keys()}catch{return}
+    for(const key of keys){
+      let obj;
+      try{obj=group.get(key)}catch{continue}
+      const objPath=path?`${path}/${key}`:String(key);
+      let shape=null;
+      try{shape=Array.isArray(obj.shape)?obj.shape.map(Number):null}catch{shape=null}
+      if(shape&&shape.length===3&&shape.every(v=>Number.isFinite(v)&&v>0)){
+        const count=shape.reduce((a,b)=>a*b,1);
+        out.push({path:objPath,dataset:obj,shape,count});
+      }else if(typeof obj?.keys==="function"){
+        walk(obj,objPath);
+      }
+    }
+  }
+  walk(root,"");
+  return out;
+}
+async function mountHdf5BrowserFile(file,FS){
+  const root="/hsi_local_files";
+  try{FS.mkdir(root)}catch{}
+  const mountPoint=`${root}/m${Date.now()}_${++h5MountSerial}`;
+  try{FS.mkdir(mountPoint)}catch{}
+  if(FS.filesystems?.WORKERFS){
+    try{
+      FS.mount(FS.filesystems.WORKERFS,{files:[file]},mountPoint);
+      return {path:`${mountPoint}/${file.name}`,cleanup:()=>{try{FS.unmount(mountPoint)}catch{}try{FS.rmdir(mountPoint)}catch{}}};
+    }catch{}
+  }
+  // Fallback for browsers/builds where WORKERFS is unavailable on the main thread.
+  // This copies the HDF5 file into Emscripten memory but preserves functionality.
+  const path=`${mountPoint}/input.mat`;
+  const bytes=new Uint8Array(await file.arrayBuffer());
+  FS.writeFile(path,bytes);
+  return {path,cleanup:()=>{try{FS.unlink(path)}catch{}try{FS.rmdir(mountPoint)}catch{}}};
+}
+async function parseHDF5MATFile(file){
+  showLoading("Loading MATLAB v7.3 / HDF5…","Starting HDF5 WebAssembly runtime",4);
+  const {h5wasm,FS}=await getH5wasmRuntime();
+  updateLoading("Mounting local HDF5 file…",12);await nextFrame();
+  const mounted=await mountHdf5BrowserFile(file,FS);
+  let h5file=null;
+  try{
+    h5file=new h5wasm.File(mounted.path,"r");
+    updateLoading("Searching HDF5 datasets…",20);await nextFrame();
+    const candidates=h5DatasetCandidates(h5file);
+    if(!candidates.length)throw new Error("No 3D HDF5 dataset found in MATLAB v7.3 file.");
+    candidates.sort((a,b)=>b.count-a.count);
+    let chosen=null,data=null,lastError=null;
+    for(let i=0;i<candidates.length;i++){
+      const c=candidates[i];
+      updateLoading(`Reading HDF5 dataset ${c.path} (${c.shape.join(" × ")})`,24+60*(i/Math.max(1,candidates.length)));await nextFrame();
+      try{
+        const value=c.dataset.value;
+        if(!value||typeof value.length!=="number")throw new Error("dataset does not expose a numeric array");
+        if(value.length!==c.count)throw new Error(`numeric element count ${value.length} does not match shape element count ${c.count}`);
+        // Ensure values can be converted to ordinary JS numbers.  BigInt arrays
+        // are allowed; unsupported/raw byte datatypes are rejected by the length
+        // check above unless they are genuinely byte-valued datasets.
+        if(c.count&&typeof value[0]!=="number"&&typeof value[0]!=="bigint")throw new Error("dataset is not a numeric scalar array");
+        chosen=c;data=value;break;
+      }catch(err){lastError=err}
+    }
+    if(!chosen)throw new Error(`3D datasets were found, but none could be read as a numeric cube.${lastError?` Last error: ${lastError.message||lastError}`:""}`);
+    const accessor={count:chosen.count,typed:data,get:i=>typeof data[i]==="bigint"?Number(data[i]):Number(data[i])};
+    const matlabShape=chosen.shape.slice().reverse();
+    const cube=new Cube(`${file.name}:${chosen.path}`,matlabShape,accessor,true,"mat73");
+    cube.hdf5DatasetPath=chosen.path;
+    cube.hdf5StoredShape=chosen.shape.slice();
+    cube.matlabV73=true;
+    updateLoading(`Loaded ${chosen.path} · MATLAB shape ${matlabShape.join(" × ")}`,92);await nextFrame();
+    return cube;
+  }finally{
+    try{h5file?.close()}catch{}
+    mounted.cleanup();
+  }
+}
+async function loadCubeFromFile(file){
+  const ext=(file.name.split(".").pop()||"").toLowerCase();
+  if(ext==="mat"){
+    // Read only the signature first so large NEO v7.3 files do not get copied
+    // into an ArrayBuffer before we know they can be mounted through h5wasm.
+    const sig=new Uint8Array(await file.slice(0,4096+8).arrayBuffer());
+    if(looksLikeMat73Hdf5(sig))return await parseHDF5MATFile(file);
+    return await parseMATBuffer(await file.arrayBuffer(),file.name);
+  }
+  const buffer=await file.arrayBuffer();
+  if(ext==="npy")return parseNPYBuffer(buffer,file.name);
+  if(ext==="npz")return await parseNPZBuffer(buffer,file.name);
+  throw new Error("Unsupported file type.");
+}
+
+async function makePreview(record){
+  if(record.preview)return;
+  const cube=record.cube,h=cube.height,w=cube.width,bands=cube.bands;
+  const total=h*w, scale=total>MAX_DISPLAY_PIXELS?Math.max(1,Math.ceil(Math.sqrt(total/MAX_DISPLAY_PIXELS))):1;
+  const ph=Math.ceil(h/scale),pw=Math.ceil(w/scale),means=new Float32Array(ph*pw);
+  let k=0;
+  for(let py=0;py<ph;py++){
+    const y=Math.min(h-1,py*scale);
+    for(let px=0;px<pw;px++){
+      const x=Math.min(w-1,px*scale);let sum=0,n=0;
+      for(let b=0;b<bands;b++){const v=cube.value(y,x,b);if(Number.isFinite(v)){sum+=v;n++}}
+      means[k++]=n?sum/n:NaN;
+    }
+    if(py%12===0){updateLoading(`Building preview row ${py+1} / ${ph}`,15+70*py/ph);await nextFrame()}
+  }
+  let min=Infinity,max=-Infinity;
+  for(const v of means){if(Number.isFinite(v)){if(v<min)min=v;if(v>max)max=v}}
+  if(!Number.isFinite(min)||!Number.isFinite(max)){min=0;max=1}
+  const bins=2048,hist=new Uint32Array(bins),span=max-min||1;let finite=0;
+  for(const v of means)if(Number.isFinite(v)){const bi=clamp(Math.floor((v-min)/span*(bins-1)),0,bins-1);hist[bi]++;finite++}
+  function percentile(q){const target=finite*q;let acc=0;for(let i=0;i<bins;i++){acc+=hist[i];if(acc>=target)return min+(i/(bins-1))*span}return max}
+  let lo=percentile(.02),hi=percentile(.98);if(!(hi>lo)){lo=min;hi=max;if(!(hi>lo))hi=lo+1}
+  const img=new ImageData(pw,ph);
+  for(let i=0;i<means.length;i++){
+    const g=Number.isFinite(means[i])?Math.round(255*clamp((means[i]-lo)/(hi-lo),0,1)):0;
+    const j=i*4;img.data[j]=g;img.data[j+1]=g;img.data[j+2]=g;img.data[j+3]=255;
+  }
+  const base=document.createElement("canvas");base.width=pw;base.height=ph;base.getContext("2d").putImageData(img,0,0);
+  record.preview={base,pw,ph,sy:scale,sx:scale,rotated:new Map()};
+}
+function rotatedPreview(record){
+  const rot=record.rotation%360,p=record.preview;
+  if(p.rotated.has(rot))return p.rotated.get(rot);
+  if(rot===0){p.rotated.set(rot,p.base);return p.base}
+  const c=document.createElement("canvas");
+  if(rot===90||rot===270){c.width=p.ph;c.height=p.pw}else{c.width=p.pw;c.height=p.ph}
+  const ctx=c.getContext("2d");
+  if(rot===90){ctx.translate(0,c.height);ctx.rotate(-Math.PI/2);ctx.drawImage(p.base,0,0)}
+  else if(rot===180){ctx.translate(c.width,c.height);ctx.rotate(Math.PI);ctx.drawImage(p.base,0,0)}
+  else if(rot===270){ctx.translate(c.width,0);ctx.rotate(Math.PI/2);ctx.drawImage(p.base,0,0)}
+  p.rotated.set(rot,c);return c;
+}
+function baseToDisplay(by,bx,bh,bw,rot){
+  rot=((rot%360)+360)%360;
+  if(rot===0)return [by,bx];
+  if(rot===90)return [bw-1-bx,by];
+  if(rot===180)return [bh-1-by,bw-1-bx];
+  if(rot===270)return [bx,bh-1-by];
+}
+function displayToBase(dy,dx,bh,bw,rot){
+  rot=((rot%360)+360)%360;
+  if(rot===0)return [dy,dx];
+  if(rot===90)return [dx,bw-1-dy];
+  if(rot===180)return [bh-1-dy,bw-1-dx];
+  if(rot===270)return [bh-1-dx,dy];
+}
+function originalToDisplay(record,y,x){
+  const p=record.preview,by=Math.floor(y/p.sy),bx=Math.floor(x/p.sx);
+  return baseToDisplay(by,bx,p.ph,p.pw,record.rotation);
+}
+function displayToOriginal(record,dy,dx){
+  const p=record.preview,[by,bx]=displayToBase(dy,dx,p.ph,p.pw,record.rotation);
+  return [by*p.sy,bx*p.sx];
+}
+
+function resizeCanvas(canvas){
+  const r=canvas.getBoundingClientRect(),dpr=window.devicePixelRatio||1;
+  const w=Math.max(1,Math.round(r.width*dpr)),h=Math.max(1,Math.round(r.height*dpr));
+  if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;return true}
+  return false;
+}
+function fitImage(){
+  const rec=currentFile();if(!rec||!rec.preview)return;
+  const img=rotatedPreview(rec),r=els.imageCanvas.getBoundingClientRect();
+  state.view.scale=Math.min(r.width/img.width,r.height/img.height)*.96;
+  state.view.offsetX=(r.width-img.width*state.view.scale)/2;
+  state.view.offsetY=(r.height-img.height*state.view.scale)/2;
+  drawImageCanvas();
+}
+function eventToImage(e){
+  const rec=currentFile();if(!rec||!rec.preview)return null;
+  const r=els.imageCanvas.getBoundingClientRect();
+  const cx=e.clientX-r.left,cy=e.clientY-r.top;
+  const x=(cx-state.view.offsetX)/state.view.scale,y=(cy-state.view.offsetY)/state.view.scale;
+  const img=rotatedPreview(rec);
+  if(x<0||y<0||x>=img.width||y>=img.height)return null;
+  return {x,y,cx,cy};
+}
+function drawImageCanvas(){
+  resizeCanvas(els.imageCanvas);
+  const ctx=els.imageCanvas.getContext("2d"),dpr=window.devicePixelRatio||1,r=els.imageCanvas.getBoundingClientRect();
+  ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,r.width,r.height);ctx.fillStyle="#070a0f";ctx.fillRect(0,0,r.width,r.height);
+  const rec=currentFile();if(!rec||!rec.preview){ctx.fillStyle="#718096";ctx.font="16px sans-serif";ctx.textAlign="center";ctx.fillText("Load .npy, .npz or classic .mat HSI cubes",r.width/2,r.height/2);return}
+  const img=rotatedPreview(rec),s=state.view.scale,ox=state.view.offsetX,oy=state.view.offsetY;
+  ctx.imageSmoothingEnabled=false;ctx.drawImage(img,ox,oy,img.width*s,img.height*s);
+  ctx.save();ctx.beginPath();ctx.rect(ox,oy,img.width*s,img.height*s);ctx.clip();
+  for(const cls of state.classes){
+    const set=rec.selections.get(cls.name);if(!set||!set.size)continue;
+    ctx.fillStyle=cls.color;
+    const maxDraw=50000,step=Math.max(1,Math.ceil(set.size/maxDraw));let n=0;
+    for(const idx of set){if((n++%step)!==0)continue;const y=Math.floor(idx/rec.cube.width),x=idx%rec.cube.width;const [dy,dx]=originalToDisplay(rec,y,x);const px=ox+(dx+.5)*s,py=oy+(dy+.5)*s;const q=Math.max(2,Math.min(5,s*.55));ctx.globalAlpha=.88;ctx.fillRect(px-q/2,py-q/2,q,q)}
+  }
+  ctx.globalAlpha=1;
+  if(state.drag&&state.drag.kind==="select"){
+    const a=state.drag.start,b=state.drag.current;ctx.strokeStyle="#ffe066";ctx.lineWidth=1.5;ctx.setLineDash([5,4]);
+    const x0=ox+a.x*s,y0=oy+a.y*s,x1=ox+b.x*s,y1=oy+b.y*s;
+    if(state.mode==="rectangle")ctx.strokeRect(Math.min(x0,x1),Math.min(y0,y1),Math.abs(x1-x0),Math.abs(y1-y0));
+    else if(state.mode==="ellipse"){ctx.beginPath();ctx.ellipse((x0+x1)/2,(y0+y1)/2,Math.abs(x1-x0)/2,Math.abs(y1-y0)/2,0,0,Math.PI*2);ctx.stroke()}
+    ctx.setLineDash([]);
+  }
+  ctx.restore();
+}
+function updateMeta(){
+  const rec=currentFile();
+  if(!rec){els.fileMeta.textContent="No file loaded";els.imageTitle.textContent="No cube loaded";els.countLabel.textContent=state.currentClass?`${state.currentClass}: 0 pixels`:"No class selected";return}
+  const c=rec.cube,p=rec.preview;
+  els.fileMeta.innerHTML=`<strong>${state.index+1}/${state.files.length}: ${escapeHtml(rec.file.name)}</strong><br>`+
+    `Shape: (${c.shape.join(", ")})<br>Logical Y×X×bands: ${c.height}×${c.width}×${c.bands}<br>`+
+    `Spectral axis: ${c.specAxis} · Rotation: ${rec.rotation}°`+
+    `${c.matlabV73?`<br>MATLAB v7.3/HDF5 dataset: ${escapeHtml(c.hdf5DatasetPath||"")}<br>Stored HDF5 shape: (${(c.hdf5StoredShape||[]).join(", ")})`:""}`+
+    `${p?`<br>Preview scale: y=${p.sy}, x=${p.sx}`:""}`;
+  els.imageTitle.textContent=`${rec.file.name} · rotation ${rec.rotation}°`;
+  updateCount();
+}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function updateCount(){
+  const rec=currentFile(),cls=state.currentClass;
+  if(!cls){els.countLabel.textContent="No class selected";return}
+  const n=rec?.selections.get(cls)?.size||0;els.countLabel.textContent=`${cls}: ${n.toLocaleString()} pixels in this cube`;
+}
+function renderClasses(){
+  els.classList.innerHTML="";
+  state.classes.forEach(cls=>{
+    const row=document.createElement("div");row.className="class-item"+(state.currentClass===cls.name?" active":"");
+    row.innerHTML=`<span class="swatch" style="background:${cls.color}"></span><span>${escapeHtml(cls.name)}</span><span class="small">${currentFile()?.selections.get(cls.name)?.size||0}</span>`;
+    row.onclick=()=>{state.currentClass=cls.name;els.classColor.value=cls.color;renderClasses();updateCount();drawImageCanvas();refreshSpectrumPlot()};
+    els.classList.appendChild(row);
+  });
+}
+function addClass(){
+  const name=els.classInput.value.trim();if(!name)return;
+  let cls=state.classes.find(c=>c.name===name);
+  if(!cls){cls={name,color:defaultColor(state.classes.length)};state.classes.push(cls);for(const r of state.files)r.selections.set(name,new Set())}
+  state.currentClass=name;els.classColor.value=cls.color;els.classInput.value="";renderClasses();updateCount();refreshSpectrumPlot();
+}
+function deleteClass(){
+  const name=state.currentClass;if(!name)return;
+  if(!confirm(`Delete class "${name}" and all selected pixels assigned to it?`))return;
+  state.classes=state.classes.filter(c=>c.name!==name);for(const r of state.files)r.selections.delete(name);
+  state.currentClass=state.classes[0]?.name||null;if(state.currentClass)els.classColor.value=currentClassObj().color;
+  renderClasses();drawImageCanvas();refreshSpectrumPlot();state.projectSeries=[];drawProjectPlot();
+}
+function changeClassColor(){
+  const cls=currentClassObj();if(!cls)return;cls.color=els.classColor.value;renderClasses();drawImageCanvas();refreshSpectrumPlot();drawProjectPlot();
+}
+
+async function loadFiles(files){
+  if(!files.length)return;showLoading("Loading HSI files…","Preparing files",0);const errors=[];
+  for(let i=0;i<files.length;i++){
+    const f=files[i];updateLoading(`${i+1}/${files.length}: ${f.name}`,100*i/files.length);await nextFrame();
+    try{
+      const cube=await loadCubeFromFile(f);
+      const rec={file:f,cube,rotation:0,selections:new Map(),preview:null};
+      for(const cls of state.classes)rec.selections.set(cls.name,new Set());
+      state.files.push(rec);
+    }catch(err){errors.push(`${f.name}: ${err.message||err}`)}
+  }
+  if(state.files.length){
+    state.index=0;const rec=currentFile();showLoading("Preparing preview…",rec.file.name,10);
+    try{await makePreview(rec)}catch(e){errors.push(`${rec.file.name} preview: ${e.message||e}`)}
+    fitImage();updateMeta();renderClasses();await refreshSpectrumPlot();
+  }
+  hideLoading();
+  setStatus(errors.length?`${state.files.length} cube(s) loaded. ${errors.length} error(s): ${errors.join(" | ")}`:`${state.files.length} cube(s) loaded.`);
+}
+async function showCurrent(){
+  const rec=currentFile();if(!rec){updateMeta();drawImageCanvas();drawSpectrumPlot();return}
+  if(!rec.preview){showLoading("Preparing preview…",rec.file.name,8);await makePreview(rec);hideLoading()}
+  fitImage();updateMeta();renderClasses();state.hoverSpectrum=null;els.hoverLabel.textContent="Hover: -";await refreshSpectrumPlot();
+}
+async function navigate(delta){if(!state.files.length)return;state.index=(state.index+delta+state.files.length)%state.files.length;await showCurrent()}
+function removeCurrent(){
+  if(!state.files.length)return;const rec=currentFile();let count=0;for(const s of rec.selections.values())count+=s.size;
+  const msg=count?`Remove ${rec.file.name} from the loaded list? This also removes ${count.toLocaleString()} selected spectra/pixels from this image. The disk file is not deleted.`:`Remove ${rec.file.name} from the loaded list? The disk file is not deleted.`;
+  if(!confirm(msg))return;state.files.splice(state.index,1);state.index=Math.min(state.index,state.files.length-1);if(state.index<0)state.index=0;showCurrent();state.projectSeries=[];drawProjectPlot();
+}
+async function rotate(delta){const rec=currentFile();if(!rec)return;rec.rotation=(rec.rotation+delta+360)%360;await showCurrent()}
+async function resetRotation(){const rec=currentFile();if(!rec)return;rec.rotation=0;await showCurrent()}
+
+function makeWindowOdd(v){v=Math.max(3,Math.round(v));if(v%2===0)v++;return v}
+function invertMatrix(a){
+  const n=a.length,m=a.map((row,i)=>row.concat(Array.from({length:n},(_,j)=>i===j?1:0)));
+  for(let c=0;c<n;c++){
+    let p=c;for(let r=c+1;r<n;r++)if(Math.abs(m[r][c])>Math.abs(m[p][c]))p=r;
+    if(Math.abs(m[p][c])<1e-12)throw new Error("Savitzky-Golay polynomial matrix is singular.");
+    [m[c],m[p]]=[m[p],m[c]];const d=m[c][c];for(let j=0;j<2*n;j++)m[c][j]/=d;
+    for(let r=0;r<n;r++)if(r!==c){const f=m[r][c];for(let j=0;j<2*n;j++)m[r][j]-=f*m[c][j]}
+  }
+  return m.map(r=>r.slice(n));
+}
+const sgCache=new Map();
+function savgolCoefficients(window,poly,deriv){
+  const key=`${window}:${poly}:${deriv}`;if(sgCache.has(key))return sgCache.get(key);
+  const half=(window-1)/2,A=[];
+  for(let i=-half;i<=half;i++)A.push(Array.from({length:poly+1},(_,j)=>Math.pow(i,j)));
+  const ata=Array.from({length:poly+1},()=>Array(poly+1).fill(0));
+  for(let r=0;r<=poly;r++)for(let c=0;c<=poly;c++)for(let i=0;i<window;i++)ata[r][c]+=A[i][r]*A[i][c];
+  const inv=invertMatrix(ata),fact=deriv===0?1:deriv===1?1:2;
+  const coeff=new Float64Array(window);
+  for(let i=0;i<window;i++){let s=0;for(let k=0;k<=poly;k++)s+=inv[deriv][k]*A[i][k];coeff[i]=fact*s}
+  sgCache.set(key,coeff);return coeff;
+}
+function mirrorIndex(i,n){if(n<=1)return 0;while(i<0||i>=n){if(i<0)i=-i;else i=2*n-2-i}return i}
+function applySavgol(arr,window,poly,deriv){
+  window=makeWindowOdd(window);if(window>=arr.length)window=arr.length%2===0?arr.length-1:arr.length;window=Math.max(3,window);poly=Math.min(poly,window-1);
+  const coeff=savgolCoefficients(window,poly,deriv),half=(window-1)/2,out=new Float32Array(arr.length);
+  for(let i=0;i<arr.length;i++){let s=0;for(let k=-half;k<=half;k++)s+=coeff[k+half]*arr[mirrorIndex(i+k,arr.length)];out[i]=s}
+  return out;
+}
+function preprocessSpectrum(input){
+  let y=Float32Array.from(input),window=Number(els.windowInput.value)||11,poly=Number(els.polyInput.value)||2;
+  if(els.smoothCheck.checked)y=applySavgol(y,window,poly,0);
+  if(els.derivCheck.checked)y=applySavgol(y,window,poly,1);
+  if(els.zscoreCheck.checked){let sum=0,n=0;for(const v of y)if(Number.isFinite(v)){sum+=v;n++}const mu=n?sum/n:0;let ss=0;for(const v of y)if(Number.isFinite(v))ss+=(v-mu)*(v-mu);let sd=n?Math.sqrt(ss/n):1;if(!sd)sd=1;for(let i=0;i<y.length;i++)y[i]=(y[i]-mu)/sd}
+  return y;
+}
+function preprocessSettings(){return {smoothing:els.smoothCheck.checked,derivative:els.derivCheck.checked,zscore:els.zscoreCheck.checked,window:Number(els.windowInput.value)||11,polyorder:Number(els.polyInput.value)||2}}
+
+async function aggregateIndices(rec,indices,processed=true,collectEvery=0){
+  const bands=rec.cube.bands,mean=new Float64Array(bands),m2=new Float64Array(bands),samples=[];let n=0,j=0;
+  for(const idx of indices){
+    const y=Math.floor(idx/rec.cube.width),x=idx%rec.cube.width;let s=rec.cube.spectrum(y,x);if(processed)s=preprocessSpectrum(s);
+    n++;for(let b=0;b<bands;b++){const v=s[b],d=v-mean[b];mean[b]+=d/n;m2[b]+=d*(v-mean[b])}
+    if(collectEvery&&j%collectEvery===0&&samples.length<250)samples.push(Float32Array.from(s));
+    if((++j)%400===0)await nextFrame();
+  }
+  const std=new Float64Array(bands);if(n)for(let b=0;b<bands;b++)std[b]=Math.sqrt(m2[b]/n);
+  return {count:n,mean,std,samples};
+}
+async function refreshSpectrumPlot(){
+  const rec=currentFile();state.currentSpectrumSeries=[];
+  if(!rec){drawSpectrumPlot();return}
+  const series=[];
+  for(const cls of state.classes){
+    const set=rec.selections.get(cls.name);if(!set||!set.size)continue;
+    const a=await aggregateIndices(rec,set,true,0);
+    series.push({kind:"mean",y:a.mean,std:a.std,color:cls.color,label:`${cls.name} mean, n=${a.count}`});
+  }
+  state.currentSpectrumSeries=series;drawSpectrumPlot();
+}
+function drawPlot(canvas,series,title,emptyText){
+  resizeCanvas(canvas);const ctx=canvas.getContext("2d"),dpr=window.devicePixelRatio||1,r=canvas.getBoundingClientRect();
+  ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,r.width,r.height);ctx.fillStyle="#0b1018";ctx.fillRect(0,0,r.width,r.height);
+  const ml=52,mr=18,mt=20,mb=32,w=Math.max(20,r.width-ml-mr),h=Math.max(20,r.height-mt-mb);
+  let ymin=Infinity,ymax=-Infinity,xmax=1;
+  for(const s of series){
+    xmax=Math.max(xmax,(s.y?.length||1)-1);
+    if(s.std)for(let i=0;i<s.y.length;i++){const lo=s.y[i]-s.std[i],hi=s.y[i]+s.std[i];if(Number.isFinite(lo))ymin=Math.min(ymin,lo);if(Number.isFinite(hi))ymax=Math.max(ymax,hi)}
+    else for(const v of s.y||[]){if(Number.isFinite(v)){ymin=Math.min(ymin,v);ymax=Math.max(ymax,v)}}
+  }
+  if(!Number.isFinite(ymin)||!Number.isFinite(ymax)){ymin=0;ymax=1}
+  if(!(ymax>ymin)){ymax=ymin+1}
+  const pad=(ymax-ymin)*.06;ymin-=pad;ymax+=pad;
+  const X=i=>ml+w*(i/xmax),Y=v=>mt+h*(1-(v-ymin)/(ymax-ymin));
+  ctx.strokeStyle="#283446";ctx.lineWidth=1;ctx.fillStyle="#8090a7";ctx.font="10px sans-serif";ctx.textAlign="right";
+  for(let g=0;g<=4;g++){const yy=mt+h*g/4;ctx.beginPath();ctx.moveTo(ml,yy);ctx.lineTo(ml+w,yy);ctx.stroke();const val=ymax-(ymax-ymin)*g/4;ctx.fillText(formatNum(val),ml-6,yy+3)}
+  ctx.textAlign="center";for(let g=0;g<=4;g++){const xx=ml+w*g/4;ctx.fillText(String(Math.round(xmax*g/4)),xx,mt+h+17)}
+  if(!series.length){ctx.fillStyle="#718096";ctx.font="13px sans-serif";ctx.textAlign="center";ctx.fillText(emptyText,r.width/2,r.height/2);return}
+  for(const s of series){
+    if(s.std){
+      ctx.beginPath();for(let i=0;i<s.y.length;i++){const x=X(i),y=Y(s.y[i]+s.std[i]);i?ctx.lineTo(x,y):ctx.moveTo(x,y)}
+      for(let i=s.y.length-1;i>=0;i--)ctx.lineTo(X(i),Y(s.y[i]-s.std[i]));
+      ctx.closePath();ctx.globalAlpha=.13;ctx.fillStyle=s.color;ctx.fill();ctx.globalAlpha=1;
+    }
+    ctx.beginPath();ctx.strokeStyle=s.color;ctx.lineWidth=s.width||2;ctx.globalAlpha=s.alpha??1;ctx.setLineDash(s.dash||[]);
+    for(let i=0;i<s.y.length;i++){const v=s.y[i];if(!Number.isFinite(v))continue;const x=X(i),y=Y(v);i?ctx.lineTo(x,y):ctx.moveTo(x,y)}ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1;
+  }
+  let lx=ml+8,ly=mt+12;ctx.font="11px sans-serif";ctx.textAlign="left";
+  for(const s of series.filter(s=>s.label).slice(0,9)){ctx.fillStyle=s.color;ctx.fillRect(lx,ly-7,13,3);ctx.fillStyle="#c3cede";ctx.fillText(s.label,lx+18,ly-3);ly+=15}
+}
+function formatNum(v){const a=Math.abs(v);return a>=10000||a>0&&a<.001?v.toExponential(1):v.toFixed(a<10?2:a<100?1:0)}
+function drawSpectrumPlot(){
+  const series=state.currentSpectrumSeries.slice();
+  if(state.hoverSpectrum)series.push({kind:"hover",y:state.hoverSpectrum,color:"#e5e7eb",label:state.hoverLabelText||"hover",width:1.5,dash:[5,4]});
+  drawPlot(els.spectrumCanvas,series,"Selected class spectra","Select pixels to preview class spectra · move mouse over image for live spectrum");
+}
+function drawProjectPlot(){drawPlot(els.projectCanvas,state.projectSeries,"Project spectral view","No project spectra selected yet")}
+async function updateProjectPlot(){
+  if(!state.files.length)return;showLoading("Updating project spectral view…","Aggregating selected spectra",5);const series=[];
+  for(let ci=0;ci<state.classes.length;ci++){
+    const cls=state.classes[ci];let total=0;for(const r of state.files)total+=r.selections.get(cls.name)?.size||0;if(!total)continue;
+    const bands=state.files[0].cube.bands,mean=new Float64Array(bands),m2=new Float64Array(bands);let n=0,seen=0;const sampleEvery=Math.max(1,Math.ceil(total/250)),samples=[];
+    for(let fi=0;fi<state.files.length;fi++){
+      const rec=state.files[fi],set=rec.selections.get(cls.name);if(!set)continue;
+      for(const idx of set){
+        const y=Math.floor(idx/rec.cube.width),x=idx%rec.cube.width;let s=preprocessSpectrum(rec.cube.spectrum(y,x));n++;
+        const m=Math.min(bands,s.length);for(let b=0;b<m;b++){const v=s[b],d=v-mean[b];mean[b]+=d/n;m2[b]+=d*(v-mean[b])}
+        if(seen%sampleEvery===0&&samples.length<250)samples.push(Float32Array.from(s));seen++;
+        if(seen%400===0){updateLoading(`${cls.name}: ${seen.toLocaleString()} / ${total.toLocaleString()} spectra`,10+80*(ci/Math.max(1,state.classes.length)));await nextFrame()}
+      }
+    }
+    const std=new Float64Array(bands);for(let b=0;b<bands;b++)std[b]=Math.sqrt(m2[b]/Math.max(1,n));
+    for(const s of samples)series.push({kind:"sample",y:s,color:cls.color,alpha:.08,width:.7});
+    series.push({kind:"mean",y:mean,std,color:cls.color,label:`${cls.name} mean, n=${n}`,width:2.2});
+  }
+  state.projectSeries=series;hideLoading();drawProjectPlot();setStatus("Project spectral view updated.");
+}
+async function updateHover(e){
+  const rec=currentFile(),p=eventToImage(e);if(!rec||!p)return;
+  const [yo,xo]=displayToOriginal(rec,Math.floor(p.y),Math.floor(p.x));
+  if(yo<0||xo<0||yo>=rec.cube.height||xo>=rec.cube.width)return;
+  state.hoverSpectrum=preprocessSpectrum(rec.cube.spectrum(yo,xo));state.hoverLabelText=`hover original y=${yo}, x=${xo}`;
+  els.hoverLabel.textContent=`Hover original: y=${yo}, x=${xo}`;drawSpectrumPlot();
+}
+
+async function applyPixelAt(p){
+  const rec=currentFile(),cls=state.currentClass;if(!rec||!cls)return;
+  const [y,x]=displayToOriginal(rec,Math.floor(p.y),Math.floor(p.x));if(y<0||x<0||y>=rec.cube.height||x>=rec.cube.width)return;
+  const set=rec.selections.get(cls)||new Set();rec.selections.set(cls,set);const idx=y*rec.cube.width+x;
+  state.action==="add"?set.add(idx):set.delete(idx);updateCount();renderClasses();drawImageCanvas();await refreshSpectrumPlot();
+}
+async function applyShape(a,b){
+  const rec=currentFile(),cls=state.currentClass;if(!rec||!cls)return;
+  const img=rotatedPreview(rec),p=rec.preview,set=rec.selections.get(cls)||new Set();rec.selections.set(cls,set);
+  let xmin=clamp(Math.floor(Math.min(a.x,b.x)),0,img.width-1),xmax=clamp(Math.ceil(Math.max(a.x,b.x)),0,img.width-1);
+  let ymin=clamp(Math.floor(Math.min(a.y,b.y)),0,img.height-1),ymax=clamp(Math.ceil(Math.max(a.y,b.y)),0,img.height-1);
+  const cx=(xmin+xmax)/2,cy=(ymin+ymax)/2,rx=Math.max((xmax-xmin)/2,1),ry=Math.max((ymax-ymin)/2,1);
+  const cellCount=(xmax-xmin+1)*(ymax-ymin+1);if(cellCount>1000000&&!confirm(`This selection covers ${cellCount.toLocaleString()} preview cells and may add many pixels. Continue?`))return;
+  showLoading(state.action==="add"?"Adding spectra…":"Removing spectra…","Applying selection",5);let rows=0;
+  for(let dy=ymin;dy<=ymax;dy++){
+    for(let dx=xmin;dx<=xmax;dx++){
+      if(state.mode==="ellipse"&&(((dx-cx)**2)/(rx**2)+((dy-cy)**2)/(ry**2)>1))continue;
+      const [by,bx]=displayToBase(dy,dx,p.ph,p.pw,rec.rotation);if(by<0||bx<0||by>=p.ph||bx>=p.pw)continue;
+      const y0=by*p.sy,x0=bx*p.sx,y1=Math.min(y0+p.sy,rec.cube.height),x1=Math.min(x0+p.sx,rec.cube.width);
+      for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++){const idx=y*rec.cube.width+x;state.action==="add"?set.add(idx):set.delete(idx)}
+    }
+    rows++;if(rows%12===0){updateLoading(`Rows ${rows} / ${ymax-ymin+1}`,5+90*rows/(ymax-ymin+1));await nextFrame()}
+  }
+  hideLoading();updateCount();renderClasses();drawImageCanvas();await refreshSpectrumPlot();
+}
+
+els.imageCanvas.addEventListener("contextmenu",e=>e.preventDefault());
+els.imageCanvas.addEventListener("mousedown",e=>{
+  const p=eventToImage(e);
+  if(e.button===1||e.button===2){state.pan={x:e.clientX,y:e.clientY,ox:state.view.offsetX,oy:state.view.offsetY};return}
+  if(e.button!==0||!p)return;if(!state.currentClass){setStatus("Create and select a class first.");return}
+  if(state.mode==="pixel"){applyPixelAt(p);return}
+  state.drag={kind:"select",start:p,current:p};drawImageCanvas();
+});
+window.addEventListener("mousemove",e=>{
+  if(state.pan){state.view.offsetX=state.pan.ox+(e.clientX-state.pan.x);state.view.offsetY=state.pan.oy+(e.clientY-state.pan.y);drawImageCanvas();return}
+  if(state.drag){const p=eventToImage(e);if(p){state.drag.current=p;drawImageCanvas()}return}
+  if(e.target===els.imageCanvas){if(!state._hoverT){state._hoverT=setTimeout(()=>{state._hoverT=null;updateHover(e)},45)}}
+});
+window.addEventListener("mouseup",async e=>{
+  if(state.pan){state.pan=null;return}
+  if(state.drag){const d=state.drag;state.drag=null;drawImageCanvas();if(d.current)await applyShape(d.start,d.current)}
+});
+els.imageCanvas.addEventListener("wheel",e=>{
+  const rec=currentFile();if(!rec)return;e.preventDefault();const r=els.imageCanvas.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;
+  const old=state.view.scale,f=e.deltaY<0?1.25:1/1.25,neu=clamp(old*f,.05,80);
+  state.view.offsetX=mx-(mx-state.view.offsetX)*(neu/old);state.view.offsetY=my-(my-state.view.offsetY)*(neu/old);state.view.scale=neu;drawImageCanvas();
+},{passive:false});
+
+function crcTable(){const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=(c&1)?0xedb88320^(c>>>1):c>>>1;t[n]=c>>>0}return t}
+const CRC_TABLE=crcTable();
+function crc32(bytes){let c=0xffffffff;for(const b of bytes)c=CRC_TABLE[(c^b)&255]^(c>>>8);return (c^0xffffffff)>>>0}
+function concatBytes(parts){const n=parts.reduce((s,p)=>s+p.length,0),out=new Uint8Array(n);let o=0;for(const p of parts){out.set(p,o);o+=p.length}return out}
+function u16(v){return new Uint8Array([v&255,(v>>>8)&255])}
+function u32(v){return new Uint8Array([v&255,(v>>>8)&255,(v>>>16)&255,(v>>>24)&255])}
+function zipStore(fileMap){
+  const enc=new TextEncoder(),locals=[],centrals=[];let offset=0,count=0;
+  for(const [name,data0] of fileMap){
+    const nameb=enc.encode(name),data=data0 instanceof Uint8Array?data0:new Uint8Array(data0),crc=crc32(data);
+    const local=concatBytes([u32(0x04034b50),u16(20),u16(0),u16(0),u16(0),u16(0),u32(crc),u32(data.length),u32(data.length),u16(nameb.length),u16(0),nameb,data]);
+    locals.push(local);
+    const central=concatBytes([u32(0x02014b50),u16(20),u16(20),u16(0),u16(0),u16(0),u16(0),u32(crc),u32(data.length),u32(data.length),u16(nameb.length),u16(0),u16(0),u16(0),u16(0),u32(0),u32(offset),nameb]);
+    centrals.push(central);offset+=local.length;count++;
+  }
+  const cd=concatBytes(centrals),body=concatBytes(locals),eocd=concatBytes([u32(0x06054b50),u16(0),u16(0),u16(count),u16(count),u32(cd.length),u32(body.length),u16(0)]);
+  return concatBytes([body,cd,eocd]);
+}
+function xmlEscape(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
+function colName(n){let s="";while(n>0){n--;s=String.fromCharCode(65+n%26)+s;n=Math.floor(n/26)}return s}
+function matrixToXlsx(rows){
+  const enc=new TextEncoder();let sheet='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>';
+  for(let r=0;r<rows.length;r++){sheet+=`<row r="${r+1}">`;const row=rows[r];for(let c=0;c<row.length;c++){const v=Number(row[c]);if(Number.isFinite(v))sheet+=`<c r="${colName(c+1)}${r+1}"><v>${v}</v></c>`}sheet+="</row>"}
+  sheet+="</sheetData></worksheet>";
+  const files=new Map([
+    ["[Content_Types].xml",enc.encode('<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>')],
+    ["_rels/.rels",enc.encode('<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>')],
+    ["xl/workbook.xml",enc.encode('<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Spectra" sheetId="1" r:id="rId1"/></sheets></workbook>')],
+    ["xl/_rels/workbook.xml.rels",enc.encode('<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>')],
+    ["xl/worksheets/sheet1.xml",enc.encode(sheet)]
+  ]);
+  return zipStore(files);
+}
+function yamlScalar(v){
+  if(v===null)return "null";if(typeof v==="boolean")return v?"true":"false";if(typeof v==="number")return String(v);
+  const s=String(v).replaceAll("\\","/");return /[:#{}\[\],]|^\s|\s$/.test(s)?`"${s.replaceAll('"','\\"')}"`:s;
+}
+function yamlWrite(obj,indent=0){
+  const pad="  ".repeat(indent),lines=[];
+  for(const [k,v] of Object.entries(obj)){
+    if(Array.isArray(v)){lines.push(`${pad}${k}:`);for(const item of v){if(item&&typeof item==="object"&&!Array.isArray(item)){lines.push(`${pad}  -`);lines.push(yamlWrite(item,indent+2))}else lines.push(`${pad}  - ${yamlScalar(item)}`)}}
+    else if(v&&typeof v==="object"){lines.push(`${pad}${k}:`);lines.push(yamlWrite(v,indent+1))}
+    else lines.push(`${pad}${k}: ${yamlScalar(v)}`);
+  }
+  return lines.join("\n");
+}
+function safeFilename(s){return String(s).replace(/[\\/:*?"<>|]+/g,"_").trim()||"class"}
+function timestamp(){const d=new Date(),p=n=>String(n).padStart(2,"0");return `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}_${String(d.getMilliseconds()).padStart(3,"0")}`}
+async function exportData(){
+  if(!state.files.length)return;const processed=els.exportKind.value==="preprocessed",settings=preprocessSettings(),ts=timestamp();
+  const outputs=new Map(),yaml={export:{type:processed?"preprocessed":"raw",xlsx_contains:"spectra_values_only",xlsx_filename_pattern:"<class_name>.xlsx"},preprocessing:{
+    savgol_smoothing:processed?settings.smoothing:false,savgol_derivative:processed?settings.derivative:false,zscore:processed?settings.zscore:false,
+    savgol_window:processed?settings.window:null,savgol_polyorder:processed?settings.polyorder:null},files:[]};
+  showLoading("Exporting spectra…","Preparing data",3);
+  for(let ci=0;ci<state.classes.length;ci++){
+    const cls=state.classes[ci],rows=[];
+    for(let fi=0;fi<state.files.length;fi++){
+      const rec=state.files[fi],set=rec.selections.get(cls.name)||new Set(),sorted=[...set].sort((a,b)=>a-b),coords=[];
+      for(let j=0;j<sorted.length;j++){
+        const idx=sorted[j],y=Math.floor(idx/rec.cube.width),x=idx%rec.cube.width;coords.push([y,x]);let s=rec.cube.spectrum(y,x);if(processed)s=preprocessSpectrum(s);rows.push(Array.from(s));
+        if(j%300===0){updateLoading(`${cls.name}: ${j+1}/${sorted.length} from ${rec.file.name}`,5+85*(ci/state.classes.length));await nextFrame()}
+      }
+      yaml.files.push({source_file:rec.file.name,class:cls.name,n_selected_pixels:coords.length,remembered_display_rotation_deg:rec.rotation,selected_original_coordinates_yx:coords});
+    }
+    if(rows.length)outputs.set(`${safeFilename(cls.name)}.xlsx`,matrixToXlsx(rows));
+  }
+  outputs.set(`export_settings_${ts}.yaml`,new TextEncoder().encode(yamlWrite(yaml)+"\n"));
+  try{
+    if(window.showDirectoryPicker){
+      const dir=await window.showDirectoryPicker({mode:"readwrite"});
+      for(const [name,bytes] of outputs){const h=await dir.getFileHandle(name,{create:true}),w=await h.createWritable();await w.write(bytes);await w.close()}
+      setStatus(`Export complete: ${outputs.size} file(s) written to ${dir.name}.`);
+    }else{
+      const z=zipStore(outputs),blob=new Blob([z],{type:"application/zip"}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`hsi_export_${ts}.zip`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+      setStatus(`Export complete: downloaded hsi_export_${ts}.zip`);
+    }
+  }catch(e){if(e.name!=="AbortError")setStatus(`Export error: ${e.message||e}`)}
+  hideLoading();
+}
+
+els.loadBtn.onclick=async()=>{
+  if(window.showOpenFilePicker){
+    try{const hs=await window.showOpenFilePicker({multiple:true,types:[{description:"HSI cubes",accept:{"application/octet-stream":[".npy",".npz",".mat"]}}]});const fs=[];for(const h of hs)fs.push(await h.getFile());await loadFiles(fs)}catch(e){if(e.name!=="AbortError")setStatus(e.message||String(e))}
+  }else els.fileInput.click();
+};
+els.fileInput.onchange=()=>loadFiles([...els.fileInput.files]);
+els.prevBtn.onclick=()=>navigate(-1);els.nextBtn.onclick=()=>navigate(1);els.removeBtn.onclick=removeCurrent;
+els.rotLeftBtn.onclick=()=>rotate(90);els.rotRightBtn.onclick=()=>rotate(-90);els.resetRotBtn.onclick=resetRotation;els.fitBtn.onclick=fitImage;
+els.addClassBtn.onclick=addClass;els.classInput.onkeydown=e=>{if(e.key==="Enter")addClass()};els.deleteClassBtn.onclick=deleteClass;els.classColor.oninput=changeClassColor;
+els.modeSelect.onchange=()=>state.mode=els.modeSelect.value;els.actionSelect.onchange=()=>state.action=els.actionSelect.value;
+for(const el of [els.smoothCheck,els.derivCheck,els.zscoreCheck,els.windowInput,els.polyInput])el.addEventListener("change",()=>{refreshSpectrumPlot();if(state.hoverSpectrum)drawSpectrumPlot()});
+els.projectViewBtn.onclick=updateProjectPlot;els.exportBtn.onclick=exportData;
+window.addEventListener("resize",()=>{if(currentFile()?.preview)fitImage();drawSpectrumPlot();drawProjectPlot()});
+drawImageCanvas();drawSpectrumPlot();drawProjectPlot();
+</script>
+</body>
+</html>
